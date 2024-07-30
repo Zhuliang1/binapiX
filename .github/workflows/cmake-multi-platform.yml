@@ -37,8 +37,8 @@ jobs:
     - name: Build
       run: cmake --build build
 
-    - name: Run tests
-      run: cmake --build build --target test
+ #   - name: Run tests#，未来增加测试
+ #     run: cmake --build build --target test
 
   release:
     needs: build
