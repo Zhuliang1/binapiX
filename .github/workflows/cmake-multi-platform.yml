@@ -28,7 +28,8 @@ jobs:
         sudo apt-get install -y libboost-all-dev
 
     - name: Set up CMake
-      uses: cmake/experimental-action@v1
+      run: |
+        sudo apt-get install -y cmake
 
     - name: Configure CMake
       run: cmake -S . -B build -DBOOST_ROOT=/usr
