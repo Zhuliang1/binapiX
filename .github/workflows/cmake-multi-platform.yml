@@ -24,7 +24,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        #sudo apt-get update
+        sudo apt-get update
         sudo apt-get install -y libboost-all-dev
 
     - name: Set up CMake
@@ -37,36 +37,66 @@ jobs:
     - name: Build
       run: cmake --build build -j $(nproc)
 
- #   - name: Run tests#，未来增加测试
- #     run: cmake --build build --target test
-
-      # Add your build steps here
+#    - name: Run tests
+#      run: cmake --build build --target test
 
   release:
     needs: build
     runs-on: ubuntu-latest
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+    - name: Checkout code
+      uses: actions/checkout@v3
 
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        with:
-          tag_name: ${{ env.RELEASE_TAG }}
-          release_name: Release ${{ env.RELEASE_TAG }}
-          body: |
-            Release notes for ${{ env.RELEASE_TAG }}
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      with:
+        tag_name: ${{ github.event.inputs.release_tag || 'v1.0.0' }}
+        release_name: Release ${{ github.event.inputs.release_tag || 'v1.0.0' }}
+        body: |
+          Release notes for ${{ github.event.inputs.release_tag || 'v1.0.0' }}
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload Release Assets
-        uses: actions/upload-release-asset@v1
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./build/
-          asset_name: binapi
-          asset_content_type: application/octet-stream
+    - name: Upload Release Asset 1
+      uses: actions/upload-release-asset@v1
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./examples/asynchronous/build
+        asset_name: asynchronous
+        asset_content_type: application/octet-stream
+
+    - name: Upload Release Asset 2
+      uses: actions/upload-release-asset@v1
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./examples/asynchronous-user_data/build/
+        asset_name: asynchronous-user_data
+        asset_content_type: application/octet-stream
+
+    - name: Upload Release Asset 3
+      uses: actions/upload-release-asset@v1
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path:  ./examples/synchronous/build/
+        asset_name: synchronous
+        asset_content_type: application/octet-stream
+
+    - name: Upload Release Asset 4
+      uses: actions/upload-release-asset@v1
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path:  ./examples/synchronous-user_data/build/
+        asset_name: synchronous-user_data
+        asset_content_type: application/octet-stream
+
+    - name: Upload Release Asset 5
+      uses: actions/upload-release-asset@v1
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path:  ./examples/websockets/build/
+        asset_name: websockets
+        asset_content_type: application/octet-stream
