@@ -67,6 +67,6 @@ jobs:
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./build/binapi
-          asset_name: my_executable
+          asset_path: ./build/
+          asset_name: binapi
           asset_content_type: application/octet-stream
