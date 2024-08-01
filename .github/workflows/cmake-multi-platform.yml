@@ -38,7 +38,7 @@ jobs:
       run: cmake --build build -j $(nproc)
 
     - name: List build directory contents
-      run: ls -R build
+      run: ls -R build/examples
 
   release:
     needs: build
