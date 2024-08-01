@@ -73,7 +73,7 @@ jobs:
       uses: actions/upload-release-asset@v1
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./examples/asynchronous-user_data/build/
+        asset_path: ./build/examples/asynchronous-user_data/
         asset_name: asynchronous-user_data
         asset_content_type: application/octet-stream
 
@@ -81,7 +81,7 @@ jobs:
       uses: actions/upload-release-asset@v1
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path:  ./examples/synchronous/build/
+        asset_path:  ./build/examples/synchronous/
         asset_name: synchronous
         asset_content_type: application/octet-stream
 
@@ -89,7 +89,7 @@ jobs:
       uses: actions/upload-release-asset@v1
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path:  ./examples/synchronous-user_data/build/
+        asset_path:  ./build/examples/synchronous-user_data/
         asset_name: synchronous-user_data
         asset_content_type: application/octet-stream
 
@@ -97,6 +97,6 @@ jobs:
       uses: actions/upload-release-asset@v1
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path:  ./examples/websockets/build/
+        asset_path:   ./build/examples/websockets/
         asset_name: websockets
         asset_content_type: application/octet-stream
