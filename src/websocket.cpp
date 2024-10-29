@@ -86,6 +86,7 @@ struct websocket: std::enable_shared_from_this<websocket> {
         m_stop_requested = true;
 
         if ( m_ws.next_layer().next_layer().is_open() ) {
+            // 直接关闭TCP基础链接
             boost::system::error_code ec;
             m_ws.close(boost::beast::websocket::close_code::normal, ec);
         }
@@ -96,34 +97,37 @@ struct websocket: std::enable_shared_from_this<websocket> {
         holder_type holder = shared_from_this();
 
         if ( m_ws.next_layer().next_layer().is_open() ) {
+            // TCP 链接进行底层是否open
             m_ws.async_close(
-                 boost::beast::websocket::close_code::normal
-                ,[holder=std::move(holder)](const boost::system::error_code &){}
+                 boost::beast::websocket::close_code::normal    // 正常情况下的normal
+                ,[holder=std::move(holder)](const boost::system::error_code &){} // 空回调函数传入 
             );
         }
     }
 
 private:
+    // async_connect 以上的链接
     template<typename CB>
     void async_connect(boost::asio::ip::tcp::resolver::results_type res, CB cb, holder_type holder) {
-        // 
+        // ws下一层之后的下一层native_handle
         if( !SSL_set_tlsext_host_name(m_ws.next_layer().native_handle() ,m_host.c_str())) {
             auto error_code = boost::beast::error_code(
-                 static_cast<int>(::ERR_get_error())
-                ,boost::asio::error::get_ssl_category()
+                 static_cast<int>(::ERR_get_error())     // 全局作用域函数
+                ,boost::asio::error::get_ssl_category()  // 获取 get_ssl_category分类
             );
 
-            __BINAPI_CB_ON_ERROR(cb, error_code);
+            __BINAPI_CB_ON_ERROR(cb, error_code);    // 直接采用回调函数
 
             return;
         }
 
         boost::asio::async_connect(
-             m_ws.next_layer().next_layer()
+             m_ws.next_layer().next_layer()            // 底层TCP
             ,res.begin()
             ,res.end()
             ,[this, cb=std::move(cb), holder=std::move(holder)]
              (boost::system::error_code ec, boost::asio::ip::tcp::resolver::iterator) mutable {
+                  // 直接输入，另外一个只作为形参，为了保留接口一致性
                 if ( ec ) {
                     if ( !m_stop_requested ) { __BINAPI_CB_ON_ERROR(cb, ec); }
                 } else {
@@ -132,8 +136,10 @@ private:
             }
         );
     }
+    // 此处采用控制回调函数 
     template<typename CB>
     void on_connected(CB cb, holder_type holder) {
+        // 网络连接处理分类，除了业务类之后还有ping  pong  close
         m_ws.control_callback(
             [this]
             (boost::beast::websocket::frame_type kind, boost::beast::string_view payload) mutable {
@@ -146,7 +152,7 @@ private:
                 );
             }
         );
-
+        // SSL层进行握手
         m_ws.next_layer().async_handshake(
              boost::asio::ssl::stream_base::client
             ,[this, cb=std::move(cb), holder=std::move(holder)]
@@ -159,6 +165,7 @@ private:
             }
         );
     }
+    // start_read cb 肯定是要传导下来的，这么多层嵌套一层一层下来，堆栈已经崩溃了
     template<typename CB>
     void on_async_ssl_handshake(CB cb, holder_type holder) {
         m_ws.async_handshake(
@@ -169,6 +176,7 @@ private:
              { start_read(ec, std::move(cb), std::move(holder)); }
         );
     }
+    // start_read 包装了一层的read，增加鲁棒性描述，每一步都检查上一步是否出问题，这样上面出问题，进入下一层函数的时候能够及时停止
     template<typename CB>
     void start_read(boost::system::error_code ec, CB cb, holder_type holder) {
         if ( ec ) {
@@ -188,6 +196,8 @@ private:
              { on_read(ec, rd, std::move(cb), std::move(holder)); }
         );
     }
+// read的细节
+// 
     template<typename CB>
     void on_read(boost::system::error_code ec, std::size_t rd, CB cb, holder_type holder) {
         if ( ec ) {
@@ -199,7 +209,8 @@ private:
 
             return;
         }
-
+        // 新变量作为一个缓存而存在
+        // strbuf是作为一个字符串存在
         auto size = m_buf.size();
         assert(size == rd);
 
@@ -209,12 +220,15 @@ private:
         for ( const auto &it: m_buf.data() ) {
             strbuf.append(static_cast<const char *>(it.data()), it.size());
         }
+        // 释放已经处理过的数据，单连接的缓存确实可以
         m_buf.consume(m_buf.size());
-
+        
+        // ok是什么样的cb回调函数
         bool ok = cb(nullptr, 0, std::string{}, strbuf.data(), strbuf.size());
         if ( !ok ) {
             stop();
         } else {
+            // 两个一直循环读取循环处理cb函数，这里的标记
             start_read(boost::system::error_code{}, std::move(cb), std::move(holder));
         }
     }
@@ -344,6 +358,7 @@ struct websockets::impl {
             return false;
         };
 
+        // 这个ws的地址获取，先进行启动，毕竟属于start channel
         auto *ws_ptr = ws.get();
         ws_ptr->async_start(
              m_host
@@ -353,11 +368,12 @@ struct websockets::impl {
             ,std::move(ws)
         );
 
-        m_set.insert(*ws_ptr);
+        m_set.insert(*ws_ptr);  // 将连接直接add进入总体的多个websocket链接中
 
         return ws_ptr;
     }
 
+    // 停止stop_channel_impl进行 模板，f函数对ws进行处理
     template<typename F>
     void stop_channel_impl(handle h, F f) {
         auto it = m_set.find(h);
@@ -370,14 +386,17 @@ struct websockets::impl {
     }
 
     void stop_channel(handle h) {
+        // 调用ws的stop
         return stop_channel_impl(h, [](auto sp){ sp->stop(); });
     }
     void async_stop_channel(handle h) {
+        // 调用sp的async_stop
         return stop_channel_impl(h, [](auto sp){ sp->async_stop(); });
     }
 
     template<typename F>
     void unsubscribe_all_impl(F f) {
+        // F f 这个m_set进行所有的链接都进行调用
         for ( auto it = m_set.begin(); it != m_set.end(); ) {
             auto *ws = static_cast<websocket *>(&(*it));
             f(ws);
@@ -386,9 +405,11 @@ struct websockets::impl {
         }
     }
     void unsubscribe_all() {
+        // 回调函数传入
         return unsubscribe_all_impl([](auto sp){ sp->stop(); });
     }
     void async_unsubscribe_all() {
+        // 取消所有的回调函数进行传入
         return unsubscribe_all_impl([](auto sp){ sp->async_stop(); });
     }
 
