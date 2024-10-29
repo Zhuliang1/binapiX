@@ -1,13 +1,5 @@
 
-// ----------------------------------------------------------------------------
-//                              Apache License
-//                        Version 2.0, January 2004
-//                     http://www.apache.org/licenses/
-//
-// This file is part of binapi(https://github.com/niXman/binapi) project.
-//
-// Copyright (c) 2019-2021 niXman (github dot nixman dog pm.me). All rights reserved.
-// ----------------------------------------------------------------------------
+// 增加注释
 
 #include <binapi/websocket.hpp>
 #include <binapi/types.hpp>
@@ -35,7 +27,7 @@
 #include <cstring>
 
 //#include <iostream> // TODO: comment out
-
+// 出错时候统一使用的函数，统一封装，源自外面对于这个回调函数整体格式的定义
 #define __BINAPI_CB_ON_ERROR(cb, ec) \
     cb(__FILE__ "(" BOOST_PP_STRINGIZE(__LINE__) ")", ec.value(), ec.message(), nullptr, 0);
 
@@ -47,8 +39,9 @@ struct websockets;
 /*************************************************************************************************/
 
 struct websocket: std::enable_shared_from_this<websocket> {
+    // websockets 这个是ws链接，设置友元
     friend struct websockets;
-
+    // 上下文初始化，不使用隐式转换所有的都明确类型
     explicit websocket(boost::asio::io_context &ioctx)
         :m_ioctx{ioctx}
         ,m_ssl{boost::asio::ssl::context::sslv23_client}
@@ -61,29 +54,29 @@ struct websocket: std::enable_shared_from_this<websocket> {
     {}
     virtual ~websocket()
     {}
-
+    // 提高代码的可读性，采用指针的形式；
     using holder_type = std::shared_ptr<websocket>;
 
     template<typename CB>
     void async_start(
-         const std::string &host
-        ,const std::string &port
-        ,const std::string &target
-        ,CB cb
-        ,holder_type holder
+         const std::string &host        // 主机域名
+        ,const std::string &port        // 端口
+        ,const std::string &target      // 修改的目标
+        ,CB cb                          // 回调函数
+        ,holder_type holder             // 指针输入
     ) {
-        m_host = host;
-        m_target = target;
-
+        m_host = host;                  // m_host 主机变量缓存
+        m_target = target;              // endpoint缓存
+        // 以下内容首先是IP地址解析
         m_resolver.async_resolve(
-             m_host
-            ,port
-            ,[this, cb=std::move(cb), holder=std::move(holder)]
+             m_host                     // 域名
+            ,port                       // 端口
+            ,[this, cb=std::move(cb), holder=std::move(holder)]// 输入回调函数和自己类型的智能指针
              (boost::system::error_code ec, boost::asio::ip::tcp::resolver::results_type res) mutable {
                 if ( ec ) {
-                    if ( !m_stop_requested ) { __BINAPI_CB_ON_ERROR(cb, ec); }
+                    if ( !m_stop_requested ) { __BINAPI_CB_ON_ERROR(cb, ec); } // 域名解析失败，直接调用回调函数，统一的错误处理函数
                 } else {
-                    async_connect(std::move(res), std::move(cb), std::move(holder));
+                    async_connect(std::move(res), std::move(cb), std::move(holder)); //解析成功就开始链接，res,cb,holder
                 }
             }
         );
@@ -113,6 +106,7 @@ struct websocket: std::enable_shared_from_this<websocket> {
 private:
     template<typename CB>
     void async_connect(boost::asio::ip::tcp::resolver::results_type res, CB cb, holder_type holder) {
+        // 
         if( !SSL_set_tlsext_host_name(m_ws.next_layer().native_handle() ,m_host.c_str())) {
             auto error_code = boost::beast::error_code(
                  static_cast<int>(::ERR_get_error())
@@ -225,34 +219,35 @@ private:
         }
     }
 
-    boost::asio::io_context &m_ioctx;
-    boost::asio::ssl::context m_ssl;
-    boost::asio::ip::tcp::resolver m_resolver;
-    boost::beast::websocket::stream<boost::asio::ssl::stream<boost::asio::ip::tcp::socket>> m_ws;
-    boost::beast::multi_buffer m_buf;
-    std::string m_host;
-    std::string m_target;
-    bool m_stop_requested;
-    boost::intrusive::set_member_hook<> m_intrusive_set_hook;
+    boost::asio::io_context &m_ioctx;            // 异步io上下文环境
+    boost::asio::ssl::context m_ssl;             // ssl异步上下文环境
+    boost::asio::ip::tcp::resolver m_resolver;   // 域名dns解析
+    boost::beast::websocket::stream<boost::asio::ssl::stream<boost::asio::ip::tcp::socket>> m_ws; // 管理安全的ws流，不同layer之间切换ws,ssl,tcp
+    boost::beast::multi_buffer m_buf;  // 缓冲区，动态分配，允许自动分配内存，进行大量的读写操作
+    std::string m_host;                // host主机
+    std::string m_target;              // 目标，也就是资源的端点
+    bool m_stop_requested;             // 停止访问
+    boost::intrusive::set_member_hook<> m_intrusive_set_hook;// 一种数据类型，用于连接统一类型的数据
 };
 
+// 针对整个websocket结构体函数的一种类型
 struct websocket_id_getter {
     using type = const void *;
-    type operator()(const websocket &sock) const { return std::addressof(sock); }
+    type operator()(const websocket &sock) const { return std::addressof(sock); }// 唯一的id对象地址
 };
 
 /*************************************************************************************************/
 /*************************************************************************************************/
 /*************************************************************************************************/
-
+// 大量的websocket连接管理函数
 struct websockets::impl {
     impl(
-         boost::asio::io_context &ioctx
-        ,std::string host
-        ,std::string port
-        ,on_message_received_cb msg_cb
-        ,on_network_stat_cb stat_cb
-        ,std::size_t stat_interval
+         boost::asio::io_context &ioctx   // 祖传异步io上下文环境
+        ,std::string host                 // 祖传网络访问必定存在地址
+        ,std::string port                 // 祖传端口
+        ,on_message_received_cb msg_cb    // 回调函数管理，因为异步IO也自动管理回调函数
+        ,on_network_stat_cb stat_cb       // 祖传回调函数，网络状体的回调函数，其它也存在类似的思路，根据不同状态进行处理的log等等
+        ,std::size_t stat_interval        // 状态回调间隔，这个也是没有上限的，需要合理设置高频情况下，采用极限值进行操作
     )
         :m_ioctx{ioctx}
         ,m_host{std::move(host)}
@@ -265,7 +260,7 @@ struct websockets::impl {
     ~impl() {
         unsubscribe_all();
     }
-
+    // 访问资源内部字符串处理小工具
     static std::string make_channel_name(const char *pair, const char *channel) {
         std::string res{"/ws/"};
         if ( pair ) {
