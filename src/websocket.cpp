@@ -246,7 +246,7 @@ struct websockets::impl {
         ,std::string host                 // 祖传网络访问必定存在地址
         ,std::string port                 // 祖传端口
         ,on_message_received_cb msg_cb    // 回调函数管理，因为异步IO也自动管理回调函数
-        ,on_network_stat_cb stat_cb       // 祖传回调函数，网络状体的回调函数，其它也存在类似的思路，根据不同状态进行处理的log等等
+        ,on_network_stat_cb stat_cb       // 祖传回调函数，网络状态的回调函数，其它也存在类似的思路，根据不同状态进行处理的log等等
         ,std::size_t stat_interval        // 状态回调间隔，这个也是没有上限的，需要合理设置高频情况下，采用极限值进行操作
     )
         :m_ioctx{ioctx}
@@ -260,7 +260,7 @@ struct websockets::impl {
     ~impl() {
         unsubscribe_all();
     }
-    // 访问资源内部字符串处理小工具
+    // 访问的endpoint，字符串处理小工具
     static std::string make_channel_name(const char *pair, const char *channel) {
         std::string res{"/ws/"};
         if ( pair ) {
@@ -276,12 +276,12 @@ struct websockets::impl {
 
         return res;
     }
-
+    // 单独频道开始死啦死啦滴获取数据
     template<typename F>
     websockets::handle start_channel(const char *pair, const char *channel, F cb) {
-        using args_tuple = typename boost::callable_traits::args<F>::type;
-        using message_type = typename std::tuple_element<3, args_tuple>::type;
-
+        using args_tuple = typename boost::callable_traits::args<F>::type; // 获取回调函数的列表
+        using message_type = typename std::tuple_element<3, args_tuple>::type;// 获取回调函数的第四个类型，也就是自己制造的结构体
+        // 智能指针的删除器，如何生、如何灭，这是一门学问
         static const auto deleter = [this](websocket *ws) {
             auto it = m_set.find(ws);
             if ( it != m_set.end() ) {
@@ -290,10 +290,12 @@ struct websockets::impl {
 
             delete ws;
         };
+        // 智能指针绑定删除器
         std::shared_ptr<websocket> ws{new websocket(m_ioctx), deleter};
-        std::string schannel = make_channel_name(pair, channel);
+        std::string schannel = make_channel_name(pair, channel); //channel字符串直接进行组合比如 /api/v3/ticker/price
 
-        auto wscb = [this, schannel, cb=std::move(cb)]
+        // 通用回调函数，实际上是从外部输入的回调函数
+        auto wscb = [this, schannel, cb=std::move(cb)]    // 回调函数的引用列表
             (const char *fl, int ec, std::string errmsg, const char *ptr, std::size_t size) -> bool
         {
             if ( ec ) {
@@ -305,17 +307,19 @@ struct websockets::impl {
                 }
 
                 return false;
+                // 错误就提前终止函数
             }
 
             const flatjson::fjson json{ptr, size};
             if ( json.is_object() && binapi::rest::is_api_error(json) ) {
-                auto error = binapi::rest::construct_error(json);
-                auto ecode = error.first;
-                auto emsg  = std::move(error.second);
+                // 错误码就直接进行查询并进行返回,这个时候处理的错误实际上已经是网路成功之后的错误，因此错误就是直接对接api列表
+                auto error = binapi::rest::construct_error(json); // 错误码用的居然是rest，api错误码本身应该更加通用，后续重新尝试移动位置
+                auto ecode = error.first;                         // error，错误码
+                auto emsg  = std::move(error.second);             // 错误消息
 
                 try {
-                    message_type message{};
-                    return cb(__MAKE_FILELINE, ecode, std::move(emsg), std::move(message));
+                    message_type message{};        //来自回调函数的空结构体
+                    return cb(__MAKE_FILELINE, ecode, std::move(emsg), std::move(message)); // 调用回调函数，回调函数可以进行处理，通用回调函数直接注入引擎
                 } catch (const std::exception &ex) {
                     std::fprintf(stderr, "%s: %s\n", __MAKE_FILELINE, ex.what());
                     std::fflush(stderr);
@@ -323,15 +327,15 @@ struct websockets::impl {
             }
 
             try {
-                if ( m_on_message ) { m_on_message(schannel.c_str(), ptr, size); }
+                if ( m_on_message ) { m_on_message(schannel.c_str(), ptr, size); } // message进行处理有消息就进行处理
             } catch (const std::exception &ex) {
                 std::fprintf(stderr, "%s: %s\n", __MAKE_FILELINE, ex.what());
                 std::fflush(stderr);
             }
 
             try {
-                message_type message = message_type::construct(json);
-                return cb(nullptr, 0, std::string{}, std::move(message));
+                message_type message = message_type::construct(json);             // 完成从消息到结构体的赋值
+                return cb(nullptr, 0, std::string{}, std::move(message));         // 得到结构体后调用回调函数
             } catch (const std::exception &ex) {
                 std::fprintf(stderr, "%s: %s\n", __MAKE_FILELINE, ex.what());
                 std::fflush(stderr);
@@ -388,12 +392,13 @@ struct websockets::impl {
         return unsubscribe_all_impl([](auto sp){ sp->async_stop(); });
     }
 
-    boost::asio::io_context &m_ioctx;
-    std::string m_host;
-    std::string m_port;
-    on_message_received_cb m_on_message;
-    on_network_stat_cb m_on_stat;
-    std::size_t m_stat_interval;
+    boost::asio::io_context &m_ioctx;        // m_ioctx,上下文环境
+    std::string m_host;                      // host
+    std::string m_port;                      // port
+    on_message_received_cb m_on_message;     // 消息回调函数
+    on_network_stat_cb m_on_stat;            // 网络状态
+    std::size_t m_stat_interval;             // 状态更新
+// 连接集合管理函数
     boost::intrusive::set<
          websocket
         ,boost::intrusive::key_of_value<websocket_id_getter>
